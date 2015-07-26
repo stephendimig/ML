@@ -78,6 +78,7 @@ The following models were examined to determine the most accurate.
 * Boosting
 * Random Forest
 
+
 Cross Validation
 ========================================================
 * The pml-training data was split into a a training and test set.
