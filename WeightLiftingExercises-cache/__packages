@@ -1,0 +1,10 @@
+base
+knitr
+lattice
+ggplot2
+caret
+gridExtra
+survival
+gbm
+plyr
+randomForest

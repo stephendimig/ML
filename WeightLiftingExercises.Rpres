@@ -1,0 +1,182 @@
+Predicting Quality of Weight Lifting Exercises
+========================================================
+author: Stephen Dimig
+date: `r date()`
+
+Introduction
+========================================================
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+
+Introduction (continued)
+========================================================
+The goal of this project is to predict the manner in which they did a weight lifting exercise (the "classe" variable) from a subset of features whose values are taken from readings on accelerometers on the belt, forearm, arm, and dumbell of 6 participants who ere asked to perform barbell lifts correctly and incorrectly in 5 different ways. This report will:
+
+* Examine several models and pick the best one
+* Describe how cross validation was used
+* Describe the sample error
+* Use the model to predict 20 different test cases
+
+
+Reading the Data
+========================================================
+The data was downloaded from a link on the Coursera website and read in as a csv file.
+
+* "#DIV/0!" strings were considered NA values.
+
+```{r}
+library(ggplot2)
+library(caret)
+require(gridExtra)
+
+df <- read.csv("pml-training.csv", stringsAsFactors=FALSE, na.strings=c("NA", "#DIV/0!"))
+inTrain <- createDataPartition(df$classe, p=0.7, list=FALSE)
+training <- df[inTrain, ]
+testing <- df[-inTrain, ]
+```
+
+Exploratory Data Analysis
+========================================================
+This data is tough to get a feel for due to the large number of features involved. What I tried to do was plot a subset of the features against the X value which is a monotomically increasing integer that is unique for each case, and color the results by the classe variable. The features on the left showed some correlation while the ones on the right appear uncorrelated with classe.
+
+Exploratory Data Analysis (continued)
+========================================================
+```{r, echo=FALSE, fig.height=8, fig.width=8}
+plot1 <- qplot(X, roll_belt, data=training, colour=classe)
+plot2 <- qplot(X, total_accel_dumbbell, data=training, colour=classe)
+plot3 <- qplot(X, pitch_forearm, data=training, colour=classe)
+plot4 <- qplot(X, roll_arm, data=training, colour=classe)
+grid.arrange(plot1, plot2, plot3, plot4, ncol=2)
+```
+
+Cleaning the Data
+========================================================
+Several features were removed from the set of predictors after an examination of the data.
+
+* All features with near zero variance were removed. These columns have little variance so they cannot contribute to a prediction.
+* The timestamp related variables were removed (raw_timestamp_part_1, raw_timestamp_part_2, and cvtd_timestamp).
+* The X column was removed.
+* The num_window column was removed.
+* All columns with over 13000 NA values in the training set were removed. These might have good information but they were too sparse for a predictor.
+
+Cleaning the Data (code)
+========================================================
+```{r, cache=TRUE}
+nzf <- nearZeroVar(training)
+training <- training[, -nzf]
+training <- training[names(training) != "raw_timestamp_part_1" ]
+training <- training[names(training) != "raw_timestamp_part_2" ]
+training <- training[names(training) != "user_name" ]
+training <- training[names(training) != "cvtd_timestamp" ]
+training <- training[names(training) != "X" ]
+training <- training[names(training) != "num_window" ]
+training <- training[,colSums(is.na(training))<13000]
+training$classe <- as.factor(training$classe)
+```
+
+Prediction Models 
+========================================================
+The following models were examined to determine the most accurate.
+
+* Linear
+* Boosting
+* Random Forest
+
+Cross Validation
+========================================================
+* The pml-training data was split into a a training and test set.
+* The training set was created using roughly 70% of the pml-training data
+* The testing set was created using roughly 30% of the pml-training data
+* K-Fold cross validation with 10 folds and 4 repeats was used for all of the models.
+
+
+Linear Model
+========================================================
+The first type of model attempted was a linear model. A linear model attempts to fit a straight line of the form:
+
+* y = B0 + (B1 * X1) + (B2 * X2) + ... + (Bn * Xn) + e
+
+In this case it is a multi-variate linear regression where the X values are the features and the Y value is the predicted value for the classe variable.
+
+Linear Model (code)
+========================================================
+```{r, cache=TRUE}
+set.seed(3311995)
+ctrl <- trainControl(method="cv", number = 10, repeats = 4)
+modelFit <- train(as.numeric(training$classe) ~., data=training[, -55], method="lm", trControl = ctrl)
+pred <- sapply(predict(modelFit, newdata=testing), round)
+```
+
+Linear Model (confusion matrix table)
+========================================================
+```{r, echo=FALSE, cache=TRUE}
+confusionMatrix(as.numeric(as.factor(testing$classe)), pred)$table
+lmcm <- confusionMatrix(as.numeric(as.factor(testing$classe)), pred)$overall
+```
+
+Boosting
+========================================================
+Gradient boosting is a machine learning technique for regression and classification problems, which produces a prediction model in the form of an ensemble of (possibly) weak prediction models, typically decision trees. It builds the model in stage-wise fashion, by weighting the results and adding them up to form a stronger predictor from the compostion.
+
+
+Boosting (code)
+========================================================
+```{r, eval=FALSE}
+set.seed(3311995)
+ctrl <- trainControl(method="cv", number = 10, repeats = 4)
+modelFit <- train(training$classe ~., data=training[, -55], method="gbm", trControl = ctrl)
+pred <- predict(modelFit, newdata=testing)
+```
+
+```{r, echo=FALSE, warning=FALSE, cache=TRUE}
+set.seed(3311995)
+ctrl <- trainControl(method="cv", number = 10, repeats = 4)
+modelFit <- train(training$classe ~., data=training[, -55], method="gbm", trControl = ctrl)
+pred <- predict(modelFit, newdata=testing)
+```
+
+
+Boosting (confusion matrix table)
+========================================================
+```{r, echo=FALSE, cache=TRUE}
+confusionMatrix(as.factor(testing$classe), pred)$table
+gbmcm <- confusionMatrix(as.factor(testing$classe), pred)$overall
+```
+
+
+Random Forests
+========================================================
+Random forests are an ensemble learning method for classification and regression tasks, that operate by constructing a multitude of decision trees at training time through bootstrap variables, and aggreagating the output based on voting or averaging. Random forests correct for decision trees' habit of overfitting to their training set.
+
+Random Forests (code)
+========================================================
+```{r, cache=TRUE}
+set.seed(3311995)
+ctrl <- trainControl(method="cv", number = 10, repeats = 4)
+modelFit <- train(training$classe ~., data=training[, -55], method="rf", trControl = ctrl, ntree=50)
+pred <- predict(modelFit, newdata=testing)
+```
+
+Random Forests (confusion matrix table)
+========================================================
+```{r, echo=FALSE, cache=TRUE}
+confusionMatrix(as.factor(testing$classe), pred)$table
+rfcm <- confusionMatrix(as.factor(testing$classe), pred)$overall
+```
+
+Model Selection
+========================================================
+Model selection was done by determining which model provided the best accuracy on the testing set.
+
+|  __Model__    | __Accuracy__  | __Upper__  | __Lower__  |
+| --------------| ------------- | ---------- | ---------- |
+| Linear        | `r lmcm['Accuracy']` | `r lmcm['AccuracyUpper']` | `r lmcm['AccuracyLower']` |
+| Boosting      | `r gbmcm['Accuracy']` | `r gbmcm['AccuracyUpper']` | `r gbmcm['AccuracyLower']` |
+| Random Forest | `r rfcm['Accuracy']` | `r rfcm['AccuracyUpper']` | `r rfcm['AccuracyLower']` |
+
+
+
+Conclusions
+========================================================
+The Random Forest Model was found to have the highest accuracy on the training data and was the model used to predict the values on the test set. The Boosting algorithm was also quite good but took a very long time to run. The Linear Model did not provide good accuracy for this case.
+
